@@ -1,12 +1,12 @@
 import os
 import google.generativeai as genai
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, File, UploadFile
 from pydantic import BaseModel, HttpUrl
 from typing import List, Optional, Union
 import requests
 import io
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 
 # --- Configuração Inicial ---
 load_dotenv()
@@ -27,6 +27,8 @@ except Exception as e:
     model = None
 
 # --- Modelos de Dados ---
+
+prompt_padrao_imagem = "Responda com uma única palavra que melhor descreve a imagem."
 
 # Modelo para o endpoint de texto simples
 class PromptRequest(BaseModel):
@@ -56,9 +58,7 @@ async def analisar_prompt(request: ImageAnalysisRequest):
     if not model:
         raise HTTPException(status_code=500, detail="Modelo de IA não inicializado corretamente.")
 
-    # Define o prompt padrão diretamente no código
-    prompt_padrao = "Responda com uma única palavra que melhor descreve a imagem."
-    content_parts = [prompt_padrao]
+    content_parts = [prompt_padrao_imagem]
     
     try:
         # Itera sobre as URLs das imagens recebidas
@@ -83,6 +83,38 @@ async def analisar_prompt(request: ImageAnalysisRequest):
         raise HTTPException(status_code=400, detail=f"Não foi possível baixar a imagem do URL fornecido: {e}")
     except Exception as e:
         print(f"Erro ao chamar a API do Gemini: {e}")
+        raise HTTPException(status_code=500, detail=f"Erro interno ao processar o prompt: {e}")
+
+@app.post("/prompt-img-file", tags=["image"])
+async def analisar_prompt_imagem_arquivo(files: List[UploadFile] = File(...)):
+    if not model:
+        raise HTTPException(status_code=500, detail="Modelo de IA não inicializado corretamente.")
+
+    content_parts = [prompt_padrao_imagem]
+
+    if not files:
+        raise HTTPException(status_code=400, detail="Nenhum arquivo foi enviado.")
+
+    try:
+        for file in files:
+            contents = await file.read()
+            
+            try:
+                img = Image.open(io.BytesIO(contents))
+                content_parts.append(img)
+            except UnidentifiedImageError:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"O arquivo '{file.filename}' não é um formato de imagem válido."
+                )
+
+        print(f"Enviando para o Gemini com {len(content_parts)} partes (1 texto + {len(files)} imagens).")
+        response = model.generate_content(content_parts)
+        print("Resposta gerada com sucesso.")
+        return {"resposta": response.text}
+
+    except Exception as e:
+        print(f"Erro ao processar a imagem ou chamar a API do Gemini: {e}")
         raise HTTPException(status_code=500, detail=f"Erro interno ao processar o prompt: {e}")
 
 @app.get("/", tags=["Health Check"])
