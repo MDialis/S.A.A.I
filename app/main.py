@@ -1,9 +1,12 @@
 # --- Importações de Bibliotecas ---
+#   from typing import List
+#   from dotenv import load_dotenv
+#   from pydantic import BaseModel, HttpUrl
+
 import os
-from typing import List
-from dotenv import load_dotenv
+
 from fastapi import FastAPI
-from pydantic import BaseModel, HttpUrl
+from fastapi.staticfiles import StaticFiles
 
 from .database import engine
 from .models import models as models_db
@@ -11,11 +14,15 @@ from .api import refeicoes
 
 models_db.Base.metadata.create_all(bind=engine)
 
+os.makedirs("uploads", exist_ok=True)
+
 app = FastAPI(                                                  # Inicializa a aplicação FastAPI com metadados para a documentação
     title="Sistema de Acompanhamento Alimentar Inteligente",
     description="Backend para o TCC de Análise e Desenvolvimento de Sistemas.",
     version="1.0.0"
 )
+
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 app.include_router(refeicoes.router) # <--- INCLUI AQUI
 

@@ -9,3 +9,6 @@ class PromptRequest(BaseModel):
 # Modelo para endpoint de URLs de imagens
 class ImageAnalysisRequest(BaseModel):
     image_urls: List[HttpUrl]
+    
+class ImageUrlAnalysisRequest(BaseModel):
+    image_url: HttpUrl # Garante que é um URL válido

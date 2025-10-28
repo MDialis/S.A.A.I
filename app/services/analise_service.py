@@ -1,8 +1,11 @@
 import os
 import json
+import uuid
 import google.generativeai as genai
+
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
+from PIL import Image
 from ..models import models as db_models
 
 # --- Inicialização do Modelo Generativo (Gemini) ---
@@ -33,32 +36,72 @@ If a macronutrient is not applicable or cannot be estimated, return a value of 0
 If the image contains no food, return an empty 'food' list.
 """
 
-def process_and_save_gemini_response(response_text: str):           # Processa a resposta, converte para JSON e salva em um arquivo.
-    # Args: response_text (str): A string de resposta bruta recebida do modelo Gemini.
-    # Returns: dict: O dicionário Python representando o JSON processado, ou um dicionário de erro.
+def analisar_imagem_e_salvar(db: Session, usuario_id: int, imagem_pil: Image.Image):
+    """
+    Serviço principal:
+    1. Salva a imagem no disco.
+    2. Envia para a LLM.
+    3. Salva o resultado completo no banco de dados.
+    """
+    
+    if not model:
+        raise HTTPException(status_code=500, detail="Modelo de IA não inicializado.")
+    
     try:
-        # Limpa a resposta, removendo marcações como (```json ... ```)
-        cleaned_text = response_text.strip().strip('```json').strip('```').strip()
+        # Normaliza extensões de arquivo
+        file_extension = imagem_pil.format.lower()
+        if file_extension == 'jpeg':
+            file_extension = 'jpg'
 
-        # Converte a string de texto limpa para um objeto Python (dicionário)
-        data = json.loads(cleaned_text)                        
+        unique_filename = f"{uuid.uuid4()}.{file_extension}"        # Gera um nome de arquivo único para evitar sobreposição
         
-        # Gera um nome de arquivo com base na data e hora atual
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{timestamp}_analise.json"
-        filepath = os.path.join(DATA_DIR, filename)
+        filepath = os.path.join("uploads", unique_filename)         # Define o caminho de salvamento no sistema de arquivos
         
-        # Salva o objeto Python no arquivo JSON, com formatação legível (indent=4)
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
+        imagem_pil.save(filepath)                                   # Salva a imagem no disco
         
-        # Retorna os dados já parseados
-        print(f"✅ Análise salva com sucesso em: {filepath}")
-        return data
+        image_url_path = f"uploads/{unique_filename}"               # Define o caminho da URL que será salvo no banco
+        
+        # Envia Imagem para a LLM
+        response = model.generate_content([prompt_padrao_imagem, imagem_pil])
+        
+        # "Limpa" a Resposta JSON
+        cleaned_text = response.text.strip().strip('```json').strip('```').strip()
+        
+        data = json.loads(cleaned_text)                             # 'data' é o nosso objeto JSON (dicionário Python)
+        
+        # Cria a "Refeição" principal
+        nova_refeicao = db_models.Refeicao(
+            usuario_comum_id=usuario_id,
+            llm_raw_response=data,                                  # Salva o JSON bruto da IA
+            imagem_url=image_url_path                               # Salva o caminho para a imagem
+        )
+        db.add(nova_refeicao)
+        db.flush()                                                  # Necessário para que 'nova_refeicao' obtenha um ID
+        
+        # Cria os "Itens da Refeição" (os alimentos)
+        for item in data.get("food", []):
+            novo_item = db_models.RefeicaoItem(
+                refeicao_id=nova_refeicao.id,                       # Vincula ao ID da refeição
+                nome_alimento=item.get("name"),
+                quantidade=item.get("amount", 0),
+                calorias=item.get("calories", 0),                   # Mesmo que o prompt não peça,
+                proteinas=item.get("proteins", 0),
+                carboidratos=item.get("carbohydrates", 0),
+                gordura=item.get("fats", 0)                         # O JSON tem 'fats', o DB tem 'gordura'
+            )
+            db.add(novo_item)
+        
+        # Confirma todas as mudanças no banco de dados
+        db.commit()
+        db.refresh(nova_refeicao) # Atualiza o objeto com os dados do DB
+        
+        print(f"✅ Refeição ID {nova_refeicao.id} salva. Imagem em: {image_url_path}")
+        return nova_refeicao
         
     except json.JSONDecodeError:
-        print(f"⚠️ Erro: A resposta da IA não era um JSON válido. Resposta recebida: {response_text}")
-        return {"error": "A resposta da IA não era um JSON válido.", "raw_response": response_text}
+        db.rollback() # Desfaz qualquer mudança no banco se o JSON falhar
+        raise HTTPException(status_code=500, detail="A resposta da IA não era um JSON válido.")
     except Exception as e:
-        print(f"❌ Erro ao salvar o arquivo: {e}")
-        return {"error": f"Erro ao salvar o arquivo: {e}", "raw_response": response_text}
+        db.rollback() # Desfaz qualquer mudança se qualquer outro erro ocorrer
+        print(f"❌ Erro no serviço de análise: {e}")
+        raise HTTPException(status_code=500, detail=f"Erro interno ao processar a análise: {str(e)}")

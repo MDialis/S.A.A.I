@@ -1,16 +1,46 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, Date, Enum, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, DateTime, Date, Enum, ForeignKey, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from datetime import datetime
-import enum
 from ..database import Base
+
+import enum
 
 class SexoEnum(str, enum.Enum):
     MASCULINO = "MASCULINO"
     FEMININO = "FEMININO"
     OUTRO = "OUTRO"
 
-# A classe Pessoa não será uma tabela, mas uma classe base para herança.
-# No DER, você modelou tabelas separadas com FK, o que é ótimo. Vamos seguir isso.
+# NOVO: Um enum para o status do relatório
+class StatusRelatorioEnum(str, enum.Enum):
+    PENDENTE = "PENDENTE"
+    REVISADO = "REVISADO"
+    APROVADO = "APROVADO"
+
+# NOVO: A tabela para os Relatórios
+class Relatorio(Base):
+    __tablename__ = "relatorios"
+
+    id = Column(Integer, primary_key=True, index=True)
+    usuario_comum_id = Column(Integer, ForeignKey("usuarios_comuns.id"))
+    nutricionista_id = Column(Integer, ForeignKey("nutricionistas.id"))
+    
+    periodo_inicio = Column(Date, nullable=False)
+    periodo_fim = Column(Date, nullable=False)
+    
+    # Este é o relatório gerado automaticamente pela IA/sistema
+    resumo_automatico = Column(Text, nullable=True) 
+    
+    # Este é o campo que o nutricionista edita
+    comentarios_nutricionista = Column(Text, nullable=True)
+    
+    status = Column(Enum(StatusRelatorioEnum), default=StatusRelatorioEnum.PENDENTE)
+    data_criacao = Column(DateTime, default=datetime.utcnow)
+    data_aprovacao = Column(DateTime, nullable=True)
+
+    # Relacionamentos
+    usuario_comum = relationship("UsuarioComum")
+    nutricionista = relationship("Nutricionista")
 
 class Usuario(Base):
     __tablename__ = "usuarios"
@@ -48,7 +78,7 @@ class Nutricionista(Base):
     crn = Column(String, unique=True, index=True) # Conselho Regional de Nutricionistas
     
     usuario = relationship("Usuario", back_populates="nutricionista")
-    relatorios_gerados = relationship("Relatorio", back_populates="nutricionista")
+#   relatorios_gerados = relationship("Relatorio", back_populates="nutricionista")
 
 class Refeicao(Base):
     __tablename__ = "refeicoes"
@@ -57,6 +87,7 @@ class Refeicao(Base):
     usuario_comum_id = Column(Integer, ForeignKey("usuarios_comuns.id"))
     data_hora = Column(DateTime, default=datetime.utcnow)
     imagem_url = Column(String, nullable=True) # URL onde a imagem está armazenada
+    llm_raw_response = Column(JSONB, nullable=True) # Para salvar o JSON bruto da IA
     
     usuario_comum = relationship("UsuarioComum", back_populates="refeicoes")
     itens = relationship("RefeicaoItem", back_populates="refeicao", cascade="all, delete-orphan")
