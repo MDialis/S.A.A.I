@@ -32,7 +32,7 @@ Each item in the 'food' list must have the following attributes:
 - 'proteins': Proteins amount in g.
 - 'fats': Fat (lipids) amount in g.
 
-If a macronutrient is not applicable or cannot be estimated, return a value of 0.
+If a macronutrient is not applicable, cannot be estimated or has none, return a value of 0.
 If the image contains no food, return an empty 'food' list.
 """
 

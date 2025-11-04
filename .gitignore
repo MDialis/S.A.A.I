@@ -1,4 +1,12 @@
+# Ambiente Virtual
+venv/
+
+# Arquivo de variáveis de ambiente
 .env
 
-/venv
-/uploads
+# Imagens de teste
+uploads/
+
+# Arquivos do Python
+__pycache__/
+*.pyc
