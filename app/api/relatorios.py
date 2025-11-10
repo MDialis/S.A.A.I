@@ -1,58 +1,103 @@
-# app/api/relatorios.py
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from typing import List, Optional
+from datetime import date
+
 from ..database import get_db
+from ..services import relatorio_service
+from ..schemas import schemas
+from ..models import models
 
 router = APIRouter(
     prefix="/relatorios",
     tags=["Relatórios"]
 )
 
-@router.get("/{usuario_id}", status_code=200)
+@router.get("/{usuario_id}", response_model=schemas.Relatorio)
 async def gerar_ou_buscar_relatorio_para_nutricionista(
     usuario_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    data_inicio: Optional[date] = None,
+    data_fim: Optional[date] = None
 ):
     """
-    (LÓGICA A IMPLEMENTAR)
-    Endpoint para o Nutricionista.
-    1. Busca todas as refeições do usuario_id em um período (ex: última semana).
-    2. Gera um resumo (pode ser uma simples lista de refeições por enquanto).
-    3. Salva/Atualiza um registro na tabela 'Relatorio'.
-    4. Retorna o relatório para o nutricionista.
+    1. Busca ou cria um relatório PENDENTE para o usuario_id.
+    2. Por padrão, busca os últimos 14 dias (lógica no serviço).
+    3. Aceita 'data_inicio' e 'data_fim' (formato YYYY-MM-DD) como query params.
+    4. Retorna o relatório (com o resumo automático).
     """
-    print(f"Nutricionista está solicitando relatório para o usuário {usuario_id}")
-    # (Lógica simplificada por enquanto)
-    return {"message": f"Relatório para usuário {usuario_id} está sendo gerado", "status": "PENDENTE"}
+    try:
+        relatorio = relatorio_service.criar_relatorio(
+            db=db, 
+            usuario_id=usuario_id,
+            data_inicio=data_inicio,
+            data_fim=data_fim
+        )
+        return relatorio
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
-
-@router.put("/{relatorio_id}/aprovar", status_code=200)
-async def aprovar_relatorio(
+@router.get("/{relatorio_id}/sugestao-ia", response_model=schemas.SugestaoRelatorioResponse)
+async def gerar_sugestao_para_nutricionista(
     relatorio_id: int,
     db: Session = Depends(get_db)
-    # (body com 'comentarios_nutricionista')
 ):
     """
-    (LÓGICA A IMPLEMENTAR)
     Endpoint para o Nutricionista.
-    1. Recebe os comentários/edições do nutricionista.
-    2. Atualiza o 'Relatorio' no banco de dados.
-    3. Muda o status para 'APROVADO'.
+    1. Pega o resumo de um relatório PENDENTE.
+    2. Envia para a LLM gerar um comentário de sugestão.
+    3. Retorna o texto da sugestão para o nutricionista editar.
     """
-    print(f"Nutricionista está aprovando o relatório {relatorio_id}")
-    return {"message": f"Relatório {relatorio_id} aprovado com sucesso"}
+    try:
+        sugestao = relatorio_service.gerar_sugestao_llm(db=db, relatorio_id=relatorio_id)
+        return sugestao
+    except HTTPException as e:
+        raise e # Repassa erros 404, 400, etc.
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+    
+@router.put("/{relatorio_id}/aprovar", response_model=schemas.Relatorio)
+async def aprovar_relatorio(
+    relatorio_id: int,
+    update_data: schemas.RelatorioUpdate, # <-- Recebe o body com os comentários
+    nutricionista_id: int, # <-- Recebe o ID do nutricionista (ex: via query param)
+    db: Session = Depends(get_db)
+):
+    """
+    Endpoint para o Nutricionista.
+    1. Recebe os comentários do nutricionista.
+    2. Atualiza o 'Relatorio' no banco e muda o status para 'APROVADO'.
+    3. Retorna o relatório atualizado.
+    """
+    try:
+        relatorio_aprovado = relatorio_service.aprovar_relatorio(
+            db=db, 
+            relatorio_id=relatorio_id, 
+            update_data=update_data, 
+            nutricionista_id=nutricionista_id
+        )
+        return relatorio_aprovado
+    except HTTPException as e:
+        raise e # Repassa exceções HTTP (como 404)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
-@router.get("/aprovados/{usuario_id}", status_code=200)
+@router.get("/aprovados/{usuario_id}", response_model=List[schemas.Relatorio])
 async def buscar_relatorios_aprovados(
     usuario_id: int,
     db: Session = Depends(get_db)
 ):
     """
-    (LÓGICA A IMPLEMENTAR)
     Endpoint para o Usuário Comum.
     1. Busca no banco todos os relatórios do usuario_id com status 'APROVADO'.
     2. Retorna a lista de relatórios (com os comentários do nutricionista).
     """
-    print(f"Usuário {usuario_id} está buscando seus relatórios aprovados.")
-    return {"message": "Buscando relatórios...", "relatorios_aprovados": []}
+    try:
+        relatorios = relatorio_service.get_relatorios_aprovados_usuario(
+            db=db, 
+            usuario_id=usuario_id
+        )
+        return relatorios
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))

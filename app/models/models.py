@@ -11,13 +11,11 @@ class SexoEnum(str, enum.Enum):
     FEMININO = "FEMININO"
     OUTRO = "OUTRO"
 
-# NOVO: Um enum para o status do relatório
 class StatusRelatorioEnum(str, enum.Enum):
     PENDENTE = "PENDENTE"
     REVISADO = "REVISADO"
     APROVADO = "APROVADO"
 
-# NOVO: A tabela para os Relatórios
 class Relatorio(Base):
     __tablename__ = "relatorios"
 
@@ -39,8 +37,8 @@ class Relatorio(Base):
     data_aprovacao = Column(DateTime, nullable=True)
 
     # Relacionamentos
-    usuario_comum = relationship("UsuarioComum")
-    nutricionista = relationship("Nutricionista")
+    usuario_comum = relationship("UsuarioComum", back_populates="relatorios")
+    nutricionista = relationship("Nutricionista", back_populates="relatorios_gerados")
 
 class Usuario(Base):
     __tablename__ = "usuarios"
@@ -68,6 +66,7 @@ class UsuarioComum(Base):
     
     usuario = relationship("Usuario", back_populates="usuario_comum")
     refeicoes = relationship("Refeicao", back_populates="usuario_comum")
+    relatorios = relationship("Relatorio", back_populates="usuario_comum")
 
 class Nutricionista(Base):
     __tablename__ = "nutricionistas"
@@ -78,7 +77,7 @@ class Nutricionista(Base):
     crn = Column(String, unique=True, index=True) # Conselho Regional de Nutricionistas
     
     usuario = relationship("Usuario", back_populates="nutricionista")
-#   relatorios_gerados = relationship("Relatorio", back_populates="nutricionista")
+    relatorios_gerados = relationship("Relatorio", back_populates="nutricionista")
 
 class Refeicao(Base):
     __tablename__ = "refeicoes"
@@ -105,5 +104,3 @@ class RefeicaoItem(Base):
     gordura = Column(Float)
     
     refeicao = relationship("Refeicao", back_populates="itens")
-
-# A tabela de Relatório pode ser adicionada depois, para focar nos primeiros passos.

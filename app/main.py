@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .database import engine
 from .models import models as models_db
-from .api import refeicoes
+from .api import refeicoes, relatorios
 
 models_db.Base.metadata.create_all(bind=engine)
 
@@ -24,7 +24,8 @@ app = FastAPI(                                                  # Inicializa a a
 
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
-app.include_router(refeicoes.router) # <--- INCLUI AQUI
+app.include_router(refeicoes.router)
+app.include_router(relatorios.router)
 
 @app.get("/", tags=["Health Check"])                            # Endpoint de verificação de saúde (health check) para confirmar que a API está online.
 async def root():
