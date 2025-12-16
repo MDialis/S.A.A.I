@@ -36,6 +36,14 @@ If a macronutrient is not applicable, cannot be estimated or has none, return a 
 If the image contains no food, return an empty 'food' list.
 """
 
+# Configuração de segurança usando Strings
+safety_settings = [
+    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+]
+
 def analisar_imagem_e_salvar(db: Session, usuario_id: int, imagem_pil: Image.Image):
     """
     Serviço principal:
@@ -49,7 +57,7 @@ def analisar_imagem_e_salvar(db: Session, usuario_id: int, imagem_pil: Image.Ima
     
     try:
         # Normaliza extensões de arquivo
-        file_extension = imagem_pil.format.lower()
+        file_extension = imagem_pil.format.lower() if imagem_pil.format else 'jpg'
         if file_extension == 'jpeg':
             file_extension = 'jpg'
 
@@ -61,13 +69,40 @@ def analisar_imagem_e_salvar(db: Session, usuario_id: int, imagem_pil: Image.Ima
         
         image_url_path = f"uploads/{unique_filename}"               # Define o caminho da URL que será salvo no banco
         
-        # Envia Imagem para a LLM
-        response = model.generate_content([prompt_padrao_imagem, imagem_pil])
+        # Envia Imagem para a LLM (Com tratamento de erro)
+        try:
+            response = model.generate_content(
+                [prompt_padrao_imagem, imagem_pil],
+                safety_settings=safety_settings
+            )
+        except Exception as api_error:
+            print(f"❌ ERRO NA CHAMADA DA API DO GOOGLE: {api_error}")
+            # Verifica se é erro de cota (429)
+            if "429" in str(api_error):
+                raise HTTPException(status_code=429, detail="Limite de requisições excedido. Tente mais devagar.")
+            raise api_error
+
+        # Validar Resposta da IA
+        print(f"   Feedback da IA: {response.prompt_feedback}")
+        
+        try:
+            texto_resposta = response.text
+        except ValueError:
+            # Se cair aqui, a IA bloqueou por segurança e não retornou texto
+            print("❌ ERRO: A IA bloqueou a resposta (response.text inválido).")
+            print(f"Motivo do bloqueio: {response.prompt_feedback}")
+            raise HTTPException(status_code=400, detail="A IA recusou processar esta imagem por motivos de segurança.")
+
+        print(f"   Texto bruto recebido: {texto_resposta[:50]}...") # Mostra só o começo
         
         # "Limpa" a Resposta JSON
-        cleaned_text = response.text.strip().strip('```json').strip('```').strip()
-        
-        data = json.loads(cleaned_text)                             # 'data' é o nosso objeto JSON (dicionário Python)
+        cleaned_text = texto_resposta.strip().strip('```json').strip('```').strip()
+                                    
+        try:
+            data = json.loads(cleaned_text)                         # 'data' é o nosso objeto JSON (dicionário Python)
+        except json.JSONDecodeError:
+            print(f"❌ ERRO JSON: Não foi possível converter o texto: {cleaned_text}")
+            raise HTTPException(status_code=500, detail="IA retornou um formato inválido.")
         
         # Cria a "Refeição" principal
         nova_refeicao = db_models.Refeicao(
