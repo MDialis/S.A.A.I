@@ -15,7 +15,7 @@ try:
         raise ValueError("Chave da API do Google não encontrada no .env")
     
     genai.configure(api_key=api_key)                                # Configura a biblioteca do Google AI com a chave fornecida
-    model = genai.GenerativeModel('gemini-2.5-flash-lite')          # Instancia o modelo generativo que será utilizado nas requisições
+    model = genai.GenerativeModel('gemini-2.5-flash')          # Instancia o modelo generativo que será utilizado nas requisições
 
 except Exception as e:                                              # Em caso de falha na inicialização, a API não funcionará corretamente.
     print(f"ERRO CRÍTICO ao inicializar o modelo Gemini: {e}")      # Loga um erro crítico e define o modelo como None.
