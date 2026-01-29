@@ -115,27 +115,41 @@ def criar_relatorio(
         db_models.Refeicao.data_hora <= datetime.combine(periodo_fim, datetime.max.time())
     ).all()
     
-    total_calorias = 0
     total_proteinas = 0
     total_carboidratos = 0
     total_gordura = 0
+    total_calorias = 0
     
     for refeicao in refeicoes:
         for item in refeicao.itens:
-            total_calorias += item.calorias or 0
             total_proteinas += item.proteinas or 0
             total_carboidratos += item.carboidratos or 0
             total_gordura += item.gordura or 0
+            total_calorias += item.carboidratos * 4 + item.proteinas * 4 + item.gordura * 9
 
+    # --- LÓGICA DE MÉDIA DIÁRIA ---
+    # Calculamos quantos dias existem no intervalo (inclusivo)
+    delta_dias = (periodo_fim - periodo_inicio).days + 1
+    
+    # Evita divisão por zero (embora processar_periodo já deva tratar isso)
+    if delta_dias < 1: 
+        delta_dias = 1
+
+    media_proteinas = total_proteinas / delta_dias
+    media_carboidratos = total_carboidratos / delta_dias
+    media_gordura = total_gordura / delta_dias
+    media_calorias = total_calorias / delta_dias
+    
     resumo_automatico = f"""
-        Relatório do período: {periodo_inicio.strftime('%d/%m/%Y')} a {periodo_fim.strftime('%d/%m/%Y')}
+        Relatório do período: {periodo_inicio.strftime('%d/%m/%Y')} a {periodo_fim.strftime('%d/%m/%Y')} ({delta_dias} dias)
         Total de refeições registradas: {len(refeicoes)}
         Resumo de Macronutrientes (Total):
-        - Calorias Totais: {total_calorias:.2f} kcal
-        - Proteínas Totais: {total_proteinas:.2f} g
-        - Carboidratos Totais: {total_carboidratos:.2f} g
-        - Gorduras Totais: {total_gordura:.2f} g
-        (Aqui entrariam os gráficos e tabelas gerados)
+        - Proteínas Totais: {media_proteinas:.2f} g/dia
+        - Carboidratos Totais: {media_carboidratos:.2f} g/dia
+        - Gorduras Totais: {media_gordura:.2f} g/dia
+        - Calorias Totais: {media_calorias:.2f} kcal/dia
+
+        Totais absolutos: {total_proteinas:.0f}g Prot, {total_carboidratos:.0f}g Carb, {total_gordura:.0f}g Gord, {total_calorias:.0f} kcal
         """
 
     novo_relatorio = db_models.Relatorio(
