@@ -15,7 +15,7 @@ try:
     
     genai.configure(api_key=api_key)
     # Usamos um modelo focado em texto para esta tarefa
-    model_texto = genai.GenerativeModel('gemini-2.5-flash') 
+    model_texto = genai.GenerativeModel('gemini-3-flash-preview') 
 
 except Exception as e:
     print(f"ERRO CRÍTICO ao inicializar o modelo Gemini (texto): {e}")
